@@ -1,0 +1,91 @@
+# UADK Multi-Agent tff-cc Configuration
+# 7-agent workflow with SQLite state management
+
+project:
+  name: "uadk-agents"
+  description: "UADK hisi_zip 硬件压缩驱动多 agent 协作开发系统"
+
+orchestrator:
+  engine: "tff-cc"
+  state_backend: "sqlite"
+  parallelism: "wave"
+
+agents:
+  task-analyzer:
+    skill: "task-analyzer"
+    identity: ".tff/agents/task-analyzer.md"
+    description: "需求分解与任务规划"
+
+  uadk-developer:
+    skill: "uadk-developer"
+    identity: ".tff/agents/uadk-developer.md"
+    description: "UADK 驱动代码开发"
+
+  code-reviewer:
+    skill: "code-reviewer"
+    identity: ".tff/agents/code-reviewer.md"
+    description: "代码审查与 SQE 验证"
+
+  build-deployer:
+    skill: "build-deployer"
+    identity: ".tff/agents/build-deployer.md"
+    description: "远程构建与部署"
+
+  tester-debugger:
+    skill: "tester-debugger"
+    identity: ".tff/agents/tester-debugger.md"
+    description: "测试与硬件调试"
+
+  technical-writer:
+    skill: "technical-writer"
+    identity: ".tff/agents/technical-writer.md"
+    description: "技术文档编写"
+
+  meta-reviewer:
+    skill: "meta-reviewer"
+    identity: ".tff/agents/meta-reviewer.md"
+    description: "Agent 工作流审计"
+
+workflow:
+  stages:
+    - id: "analyze"
+      agent: "task-analyzer"
+      description: "需求分析与任务分解"
+
+    - id: "develop"
+      agent: "uadk-developer"
+      depends_on: ["analyze"]
+      description: "代码实现"
+
+    - id: "review"
+      agent: "code-reviewer"
+      depends_on: ["develop"]
+      description: "代码审查"
+
+    - id: "build"
+      agent: "build-deployer"
+      depends_on: ["review"]
+      description: "远程构建与部署"
+
+    - id: "test"
+      agent: "tester-debugger"
+      depends_on: ["build"]
+      description: "测试与调试"
+
+    - id: "document"
+      agent: "technical-writer"
+      depends_on: ["test"]
+      description: "文档编写"
+
+    - id: "meta-review"
+      agent: "meta-reviewer"
+      depends_on: ["document"]
+      description: "元审查与改进"
+
+server:
+  host: "192.168.90.141"
+  bmc: "192.168.90.140"
+  arch: "aarch64"
+  os: "openEuler"
+  user: "root"
+  source_path: "/root/hch/lz4_uadk/"
