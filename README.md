@@ -4,7 +4,14 @@
 
 ## 概述
 
-本项目将 UADK hisi_zip 硬件压缩驱动开发拆分为 7 个专用 AI agent，通过 tff-cc 进行多 agent 编排，实现从需求分析到代码审查的全流程自动化协作。
+本项目将 [UADK](https://github.com/Linaro/uadk) hisi_zip 硬件压缩驱动开发拆分为 7 个专用 AI agent，通过 tff-cc 进行多 agent 编排，实现从需求分析到代码审查的全流程自动化协作。
+
+> **注意**：所有 agent 在执行前会向用户确认远程服务器信息（IP、用户名、认证方式），不会使用硬编码的服务器地址。
+
+### 目标仓库
+
+- **主开发目标**：[UADK](https://github.com/Linaro/uadk) — 用户空间加速器开发套件（用户可使用自己的 fork 仓）
+- **应用参考案例**：[lz4_uadk](https://github.com/IAMHCHCH/lz4_uadk) — UADK 上层 LZ4 压缩应用，仅作应用代码开发参考和基础功能调试
 
 ### 7 个专用 Agent
 
@@ -24,16 +31,14 @@
 需求分析 → 代码开发 → 代码审查 → 构建部署 → 测试调试 → 文档编写 → 元审查
 ```
 
-## 硬件环境
+## 硬件要求
 
-| 属性 | 值 |
-|------|-----|
-| 服务器 IP | 192.168.90.141 |
-| BMC IP | 192.168.90.140 |
-| 架构 | aarch64（鲲鹏 920，128 核） |
-| 内存 | 256GB |
-| 操作系统 | openEuler |
-| 加速器 | hisi_zip（两颗设备，分别位于 NUMA node 0 和 node 1） |
+| 属性 | 说明 |
+|------|------|
+| 架构 | aarch64（鲲鹏 920 或兼容平台） |
+| 操作系统 | openEuler 或兼容 Linux 发行版 |
+| 加速器 | hisi_zip（通常两颗设备，分别位于 NUMA node 0 和 node 1） |
+| 内核模块 | hisi_zip（需支持 `uacce_mode`、`perf_mode`、`pf_q_num` 参数） |
 
 ## 快速开始
 
@@ -41,17 +46,14 @@
 
 - Node.js 20+
 - tff-cc：`npm install -g @the-forge-flow/tff-cc`
-- 鲲鹏服务器 SSH 访问：`ssh root@192.168.90.141`
+- 鲲鹏 ARM64 服务器 SSH 访问（agent 会在执行前询问连接信息）
+- 建议配置免密登录：`ssh-copy-id {user}@{server_ip}`
 
 ### 配置
 
 ```bash
 # 复制配置
 cp tff-config/settings.yaml .tff/settings.yaml
-
-# 复制 agent 和 skill
-cp -r .tff/agents/ .tff/agents/
-cp -r .tff/skills/ .tff/skills/
 ```
 
 ### 使用
@@ -70,7 +72,7 @@ cp -r .tff/skills/ .tff/skills/
 /tff:learn
 ```
 
-## 驱动配置
+## 驱动配置参考
 
 ```bash
 # 标准开发加载
@@ -91,9 +93,8 @@ cat /sys/class/uacce/hisi_zip-0/available_instances
 |------|------|--------|
 | WD_BD_DUMP | BD/SQE dump 级别（0=关, 1=关键字段, 2=完整 hex） | 0 |
 | WD_COMP_EPOLL_EN | 启用 epoll 模式（降低同步 CPU） | 0 |
-| LZ4_UADK_HW | 硬件开关 | 1 |
-| LZ4_UADK_HW_CONCURRENCY | 硬件并发数 | 8 |
-| LZ4_UADK_QUIET | 关闭调试输出 | 0 |
+
+> 上层应用（如 lz4_uadk）可能有额外的环境变量，详见对应项目文档。
 
 ## 项目结构
 
@@ -117,7 +118,7 @@ uadk-agents/
 │       ├── technical-writer/SKILL.md
 │       └── meta-reviewer/SKILL.md
 ├── tff-config/
-│   ├── settings.yaml    # tff-cc 配置
+│   ├── settings.yaml    # tff-cc 配置模板
 │   └── WORKFLOW.md      # 工作流文档
 └── README.md
 ```
@@ -125,5 +126,5 @@ uadk-agents/
 ## 相关项目
 
 - [UADK](https://github.com/Linaro/uadk) — 上游 UADK 仓库
+- [lz4_uadk](https://github.com/IAMHCHCH/lz4_uadk) — UADK 上层 LZ4 应用参考案例
 - [tff-cc](https://github.com/the-forge-flow) — 多 agent 编排器
-- [uadk-scheduler](https://github.com/IAMHCHCH/uadk-scheduler) — UADK 异构调度算法

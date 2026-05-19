@@ -4,12 +4,19 @@
 
 本文档描述如何使用 7-agent UADK 开发工作流与 tff-cc 编排。
 
+> **重要**：所有 agent 在执行前会向用户确认远程服务器 IP、用户名和认证方式。lz4_uadk 仅为 UADK 上层应用参考案例，主开发目标是 [UADK](https://github.com/Linaro/uadk)（用户可提供 fork 仓）。
+
 ## 前置条件
 
 - Node.js 20+ 已安装
 - tff-cc 已安装：`npm install -g @the-forge-flow/tff-cc`
 - Claude Code 已安装 tff-cc 插件（可选但推荐）
-- 鲲鹏服务器访问：`ssh root@192.168.90.141`
+- 鲲鹏 ARM64 服务器 SSH 访问（agent 会询问连接信息）
+- 建议提前配置免密登录：
+  ```bash
+  ssh-keygen -t ed25519 -C "uadk-dev"
+  ssh-copy-id {user}@{server_ip}
+  ```
 
 ## 配置
 
@@ -67,18 +74,20 @@ cp tff-config/settings.yaml .tff/settings.yaml
 ### 阶段 4：构建与部署
 ```bash
 # 构建部署器 agent：
-# 1. 在远程服务器编译：cd /root/hch/lz4_uadk && make
-# 2. 加载驱动：modprobe hisi_zip uacce_mode=1 perf_mode=1
-# 3. 验证设备：cat /sys/class/uacce/hisi_zip-0/available_instances
+# 1. 向用户确认服务器 IP、用户名、认证方式
+# 2. 在远程服务器编译 UADK（或用户 fork 仓）
+# 3. 加载驱动：modprobe hisi_zip uacce_mode=1 perf_mode=1
+# 4. 验证设备：cat /sys/class/uacce/hisi_zip-0/available_instances
 ```
 
 ### 阶段 5：测试与调试
 ```bash
 # 测试调试器 agent：
-# 1. 运行往返测试：./test_lz4_uadk
-# 2. 需要时启用 BD dump：WD_BD_DUMP=1 ./lz4_debug ...
-# 3. 性能剖析：perf record -g ./bench_lz4_uadk ...
-# 4. 收集错误数据并路由回开发者
+# 1. 向用户确认服务器信息和测试路径
+# 2. 运行往返测试
+# 3. 需要时启用 BD dump：WD_BD_DUMP=1 ./{test_binary} ...
+# 4. 性能剖析：perf record -g ./{bench_binary} ...
+# 5. 收集错误数据并路由回开发者
 ```
 
 ### 阶段 6：文档编写
@@ -105,16 +114,12 @@ cp tff-config/settings.yaml .tff/settings.yaml
 |------|------|--------|
 | WD_BD_DUMP | BD/SQE dump 级别（0=关, 1=关键字段, 2=完整） | 0 |
 | WD_COMP_EPOLL_EN | 启用 epoll 模式 | 0 |
-| LZ4_UADK_HW_CONCURRENCY | 硬件并发数 | 8 |
-| LZ4_UADK_QUIET | 关闭调试输出 | 0 |
 
-## 服务器信息
+> 上层应用（如 lz4_uadk）可能有额外环境变量（如 `LZ4_UADK_HW`、`LZ4_UADK_HW_CONCURRENCY`），详见对应项目文档。
 
-| 属性 | 值 |
-|------|-----|
-| IP | 192.168.90.141 |
-| BMC | 192.168.90.140 |
-| 架构 | aarch64（鲲鹏 920，128 核） |
-| 操作系统 | openEuler |
-| UADK 源码 | /root/hch/uadk/ |
-| LZ4 UADK | /root/hch/lz4_uadk/ |
+## 目标项目
+
+| 项目 | 用途 | 仓库 |
+|------|------|------|
+| UADK | 主开发目标，硬件加速驱动 | https://github.com/Linaro/uadk |
+| lz4_uadk | 上层应用参考案例，基础功能调试 | https://github.com/IAMHCHCH/lz4_uadk |

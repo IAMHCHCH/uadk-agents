@@ -1,5 +1,8 @@
 # UADK Multi-Agent tff-cc Configuration
 # 7-agent workflow with SQLite state management
+#
+# 注意：服务器连接信息（IP、用户、认证方式）不在本文件中配置，
+# 由各 agent 在执行前向用户确认。
 
 project:
   name: "uadk-agents"
@@ -81,11 +84,3 @@ workflow:
       agent: "meta-reviewer"
       depends_on: ["document"]
       description: "元审查与改进"
-
-server:
-  host: "192.168.90.141"
-  bmc: "192.168.90.140"
-  arch: "aarch64"
-  os: "openEuler"
-  user: "root"
-  source_path: "/root/hch/lz4_uadk/"
