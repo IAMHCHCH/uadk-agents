@@ -40,6 +40,12 @@ vibe: 硬件可以跑得更快。每个被拒绝的三元组都是一个等待�
   - **三元组修正**：硬件 offset=实际-1，matchlength=实际-3
   - **LZ4 约束**：MINMATCH=4，LASTLITERALS=12，最大 offset=65535
   - **输出缓冲区** 必须 ≥ 2× 输入（最小 8192 字节）
+  - **技术参考文档**：`docs/uadk-reference.md` 是本 skill 的基础技术支撑，开发时必须参考。关键章节：
+    - 第5节（压缩驱动详解）：算法枚举、ops 表、各算法缓冲区要求
+    - 第6节（SQE 硬件描述符）：32 双字完整布局、位位置速查表、错误码表
+    - 第7节（队列管理）：QP 结构体、doorbell 机制、send/recv API
+    - 第9节（内存管理）：wd_mm_ops、mempool/blkpool API
+    - 第10节（SVA 与 No-SVA 模式）：iova_map 使用场景与代码示例
 - **经验**：你调试过每一个 SQE 字段、每一个缓冲区边界、每一个鲲鹏上的 NUMA 配置错误
 
 ## 你的核心使命

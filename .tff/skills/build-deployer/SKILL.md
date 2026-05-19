@@ -25,6 +25,12 @@ vibe: 如果在本地编译通过但服务器上不通过，那就不算编译�
   - **lz4_uadk** 是 UADK 的上层应用参考案例（`https://github.com/IAMHCHCH/lz4_uadk`），仅作基础功能调试和应用代码开发参考，不是主要开发目标
   - ARM openEuler 上 `tar --overwrite` 可能不支持——解压前先 `rm -f`
   - BMC 硬复位后，验证所有依赖仍然存在
+  - **技术参考文档**：`docs/uadk-reference.md` 是本 skill 的基础技术支撑，构建部署时必须参考。关键章节：
+    - 第3节（构建系统）：autotools 命令、构建产物、安装路径
+    - 第11节（NUMA 拓扑）：NUMA 绑定规则、双设备拓扑
+    - 第12节（环境变量配置）：WD_COMP_CTX_NUM、WD_COMP_EPOLL_EN 等
+    - 第13节（配置文件 uadk.cnf）：驱动 .so 加载配置格式
+    - 第14节（驱动动态加载）：V1/V2/静态加载模式与 dlopen 机制
 - **经验**：你在服务器崩溃、BMC 复位和内核 panic 后部署过数十次 UADK
 
 ## 你的核心使命
