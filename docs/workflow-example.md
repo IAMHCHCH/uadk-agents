@@ -6,7 +6,7 @@
 
 | 路径 | 编排方式 | 适合场景 |
 |------|---------|---------|
-| **A. tff-cc 编排** | `/tff-cc:discuss → execute → verify → learn` | 大型功能，需要严格 agent 流水线和质量门禁 |
+| **A. tff-cc 编排** | `/tff-cc:new → discuss → plan → execute → verify → ship → learn` | 大型功能，需要严格 agent 流水线和质量门禁 |
 | **B. 直调 Agent** | 手动按顺序加载各 agent 的 SKILL.md | 中小任务，快速迭代，零配置 |
 
 ---
@@ -15,46 +15,74 @@
 
 ### 原理
 
-tff-cc 是编排器，读取 `tff-config/settings.yaml` 中的工作流定义，按阶段依次调度 7 个 agent。状态通过 SQLite 持久化，上游输出自动作为下游的上下文。
+tff-cc 是 Claude Code 插件，通过 `claude plugin install` 安装后以 slash command 形式工作。它按阶段调度内置 agent，状态通过 SQLite 持久化，上游输出自动作为下游的上下文。
 
 ```
 你的需求
    │
    ▼
+┌─────────────┐
+│  /tff-cc:new  │  项目初始化（仅首次）
+└──────┬──────┘
+       │
+       ▼
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ /tff-cc:discuss│ ──► │/tff-cc:execute │ ──► │ /tff-cc:verify │
-│  任务分析   │     │  代码开发   │     │  代码审查   │
-└─────────────┘     └─────────────┘     └─────────────┘
-                                              │
-   ┌─────────────┐     ┌─────────────┐        │
-   │ /tff-cc:learn  │ ◄── │/tff-cc:execute │ ◄──────┘
-   │  元审查     │     │ 构建+测试   │
-   └─────────────┘     └─────────────┘
+│/tff-cc:discuss│ ──► │ /tff-cc:plan  │ ──► │/tff-cc:execute│
+│  需求讨论   │     │  任务规划   │     │  代码开发   │
+└─────────────┘     └─────────────┘     └──────┬──────┘
+                                                │
+                    ┌─────────────┐              │
+                    │ /tff-cc:ship  │ ◄──┐        │
+                    │  PR 提交    │    │        ▼
+                    └──────┬──────┘   ┌─────────────┐
+                           │     ◄── │/tff-cc:verify │
+                           │          │  代码审查   │
+                           ▼          └─────────────┘
+                    ┌─────────────┐
+                    │ /tff-cc:learn │
+                    │  元审查     │
+                    └─────────────┘
 ```
 
 ### 阶段 0：环境准备
 
 ```bash
-# 1. 安装 tff-cc
-npm install -g @the-forge-flow/tff-cc
+# 1. 添加 tff-cc 的 marketplace（首次使用时执行）
+claude plugin marketplace add MonsieurBarti/tff-mono
 
-# 2. 安装 Claude Code 插件（可选但推荐）
-claude /plugin marketplace add MonsieurBarti/tff-mono
-claude /plugin install tff-cc@the-forge-flow
+# 2. 安装 tff-cc 插件
+claude plugin install tff-cc@the-forge-flow
 
-# 3. 配置项目
-cp tff-config/settings.yaml .tff-cc/settings.yaml
+# 3. 重启 Claude Code 使插件生效
+#    退出当前 Claude Code 会话，重新启动即可
 
-# 4. 验证
+# 4. 在 Claude Code 交互会话中验证插件
 /tff-cc:help
-# 输出：
-#   /tff-cc:discuss  — 任务分析
-#   /tff-cc:execute  — 执行开发
-#   /tff-cc:verify   — 代码审查
-#   /tff-cc:learn    — 元审查与学习
+# 输出包含：
+#   /tff-cc:new        — 初始化项目
+#   /tff-cc:discuss    — 需求讨论
+#   /tff-cc:plan       — 任务规划
+#   /tff-cc:execute    — 执行开发
+#   /tff-cc:verify     — 代码审查
+#   /tff-cc:ship       — PR 提交
+#   /tff-cc:learn      — 元审查与学习
 ```
 
-### 阶段 1：`/tff-cc:discuss` — 需求分解
+> **⚠️ 注意**：不要使用 `npm install -g @the-forge-flow/tff-cc`，该包的 postinstall 脚本存在已知问题会导致安装失败。tff-cc 是 Claude Code 插件，应通过 `claude plugin install` 安装。
+
+### 阶段 1：`/tff-cc:new` — 项目初始化
+
+首次在项目中使用 tff-cc 时，必须先初始化：
+
+```
+/tff-cc:new
+```
+
+tff-cc 会引导你定义项目愿景、需求和第一个里程碑。初始化完成后，项目根目录会生成 `.tff/` 配置目录和 `STATE.md` 状态文件。
+
+> **注意**：如果项目已有 `.tff/` 目录（已初始化过），可跳过此步骤，直接进入 `/tff-cc:discuss`。
+
+### 阶段 2：`/tff-cc:discuss` — 需求分解
 
 在 Claude Code 中输入：
 
@@ -69,7 +97,7 @@ cp tff-config/settings.yaml .tff-cc/settings.yaml
 - 不能破坏现有硬件结构体 ABI
 ```
 
-**tff-cc 做的事情**：启动 `task-analyzer` agent，加载 `.tff-cc/skills/task-analyzer/SKILL.md` 和 `docs/uadk-reference.md`，分解需求为原子任务，存入 SQLite。
+**tff-cc 做的事情**：启动内置 agent，进行需求讨论和范围界定，将需求分解为可执行的 slice。
 
 **输出**：
 
@@ -123,16 +151,26 @@ cp tff-config/settings.yaml .tff-cc/settings.yaml
 📊 总预估: 6 slices | 复杂度: SS/SSS | 预计 4-6 轮交互
 ```
 
-### 阶段 2：`/tff-cc:execute` — 逐 Slice 执行
+### 阶段 3：`/tff-cc:plan` — 任务规划
 
-tff-cc 按依赖拓扑顺序调度 agent。每个 slice 完成后自动标记状态，下游 slice 就绪后才能执行。
+在 discuss 确认需求后，使用 plan 进行详细的任务分解和规划：
 
-```bash
-# Slice #1：添加枚举（无依赖，立即就绪）
-/tff-cc:execute 1
+```
+/tff-cc:plan
 ```
 
-tff-cc 启动 `uadk-developer` agent，从 SQLite 读取上下文，执行代码变更：
+tff-cc 会将讨论结果细化为带依赖关系的执行计划，定义每个 slice 的入口/出口条件和验收标准。
+
+### 阶段 4：`/tff-cc:execute` — 逐 Slice 执行
+
+tff-cc 按依赖拓扑顺序调度 agent 执行代码开发。每个 slice 完成后自动标记状态，下游 slice 就绪后才能执行。
+
+```
+# 在 Claude Code 交互会话中执行
+/tff-cc:execute
+```
+
+tff-cc 启动内置 executor agent，从 SQLite 读取上下文，执行代码变更：
 
 ```c
 // include/wd_comp.h
@@ -147,9 +185,9 @@ enum wd_comp_alg_type {
 };
 ```
 
-```bash
-# Slice #1 完成，Slice #2 自动就绪
-/tff-cc:execute 2
+```
+# 当前 slice 完成后，继续执行下一个 slice
+/tff-cc:execute
 ```
 
 ```c
@@ -190,13 +228,13 @@ static int fill_buf_lz4(handle_t h_qp, struct hisi_zip_sqe *sqe,
 
 > **注意**：tff-cc 不自动写入文件 — 它输出 diff，你在编辑器中确认后生效。人对代码有最终控制权。
 
-### 阶段 3：`/tff-cc:verify` — 代码审查
+### 阶段 5：`/tff-cc:verify` — 代码审查
 
-```bash
-/tff-cc:verify 3
+```
+/tff-cc:verify
 ```
 
-tff-cc 启动 `code-reviewer` agent，传入 Slice #1、#2 的 diff：
+tff-cc 启动内置 verifier agent，对已完成的 slice 进行验收标准验证：
 
 ```
 ╔══════════════════════════════════════════════════════╗
@@ -223,12 +261,12 @@ tff-cc 启动 `code-reviewer` agent，传入 Slice #1、#2 的 diff：
 
 审查不通过 → 回到 `uadk-developer` 修复 → 重新审查。这是 tff-cc 的内置反馈循环，有阻塞项时无法执行后续 slice。
 
-### 阶段 4：`/tff-cc:execute` — 构建 + 测试
+### 阶段 6：`/tff-cc:execute` — 继续执行（构建 + 测试）
 
-审查通过后继续：
+审查通过后继续执行后续 slice：
 
-```bash
-/tff-cc:execute 4   # 构建部署
+```
+/tff-cc:execute   # 继续执行构建部署 slice
 ```
 
 此时代理**主动询问**服务器信息：
@@ -264,8 +302,8 @@ ssh user@server "cat /sys/class/uacce/hisi_zip-0/available_instances"
 # [输出] 1024 ✅
 ```
 
-```bash
-/tff-cc:execute 5   # 测试
+```
+/tff-cc:execute   # 继续执行测试 slice
 ```
 
 测试 agent 自动运行并解析结果：
@@ -290,11 +328,13 @@ WD_BD_DUMP=2 ./lz4_test 2>&1 | tee bd_full.log
 # segfault → ulimit -c unlimited → gdb ./lz4_test /tmp/core.*
 ```
 
-### 阶段 5：文档合入
+### 阶段 7：`/tff-cc:ship` — PR 提交
 
-```bash
-/tff-cc:execute 6   # 提交信息
 ```
+/tff-cc:ship
+```
+
+tff-cc 执行代码审查、安全审计，并生成 PR。
 
 ```
 feat: add lz4 hardware offload support to hisi_zip driver
@@ -306,9 +346,9 @@ LASTLITERALS=12, max_offset=65535, output buffer >= 2x input.
 Signed-off-by: Developer <dev@example.com>
 ```
 
-### 阶段 6：`/tff-cc:learn` — 元审查
+### 阶段 8：`/tff-cc:learn` — 元审查
 
-```bash
+```
 /tff-cc:learn
 ```
 
@@ -417,46 +457,45 @@ segfault 则用 GDB + core dump 定位。
 
 ## 配置 Slash Command（可选，路径 B 提速）
 
-在 `.claude/settings.json` 中注册快捷命令，一个 `/` 即可切换 agent：
-
-```json
-{
-  "slashCommands": [
-    {
-      "name": "/uadk-analyze",
-      "prompt": "你现在是任务分析器。请严格按照 .tff-cc/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。"
-    },
-    {
-      "name": "/uadk-develop",
-      "prompt": "你现在是 UADK 开发者。请严格按照 .tff-cc/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。"
-    },
-    {
-      "name": "/uadk-review",
-      "prompt": "你现在是 UADK 代码审查员。请严格按照 .tff-cc/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。"
-    },
-    {
-      "name": "/uadk-build",
-      "prompt": "你现在是构建部署器。请严格按照 .tff-cc/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。"
-    },
-    {
-      "name": "/uadk-test",
-      "prompt": "你现在是测试调试器。请严格按照 .tff-cc/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。"
-    },
-    {
-      "name": "/uadk-docs",
-      "prompt": "你现在是技术文档编写者。请严格按照 .tff-cc/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。"
-    },
-    {
-      "name": "/uadk-meta",
-      "prompt": "你现在是元审查器。请严格按照 .tff-cc/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。"
-    }
-  ]
-}
-```
-
-配置后路径 B 简化为：
+在项目的 `.claude/commands/` 目录下创建 Markdown 文件，每个文件即为一个自定义 slash command，文件名即命令名：
 
 ```bash
+# 创建命令目录
+mkdir -p .claude/commands
+
+# 创建各 agent 的快捷命令
+cat > .claude/commands/uadk-analyze.md << 'EOF'
+你现在是任务分析器。请严格按照 .tff-cc/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。
+EOF
+
+cat > .claude/commands/uadk-develop.md << 'EOF'
+你现在是 UADK 开发者。请严格按照 .tff-cc/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。
+EOF
+
+cat > .claude/commands/uadk-review.md << 'EOF'
+你现在是 UADK 代码审查员。请严格按照 .tff-cc/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。
+EOF
+
+cat > .claude/commands/uadk-build.md << 'EOF'
+你现在是构建部署器。请严格按照 .tff-cc/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。
+EOF
+
+cat > .claude/commands/uadk-test.md << 'EOF'
+你现在是测试调试器。请严格按照 .tff-cc/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。
+EOF
+
+cat > .claude/commands/uadk-docs.md << 'EOF'
+你现在是技术文档编写者。请严格按照 .tff-cc/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。
+EOF
+
+cat > .claude/commands/uadk-meta.md << 'EOF'
+你现在是元审查器。请严格按照 .tff-cc/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。
+EOF
+```
+
+配置后路径 B 简化为（在 Claude Code 交互会话中输入）：
+
+```
 /uadk-analyze   → 描述需求
 /uadk-develop   → 描述要改什么
 /uadk-review    → 粘贴 diff
@@ -471,7 +510,7 @@ segfault 则用 GDB + core dump 定位。
 
 | 维度 | 路径 A (tff-cc) | 路径 B (直调) |
 |------|----------------|-------------|
-| **启动方式** | `/tff-cc:discuss → execute → verify → learn` | 手动 Read skill → 切换角色 |
+| **启动方式** | `/tff-cc:new → discuss → plan → execute → verify → ship → learn` | 手动 Read skill → 切换角色 |
 | **状态管理** | SQLite 自动跟踪 slice 状态和依赖 | 你自己记住进度 |
 | **上下文传递** | tff-cc 自动将上游输出注入下游 agent | 你需要手动复制/引用上一步结果 |
 | **并行执行** | 同 wave 的 slice 自动并行 | 你手动开多个会话 |
