@@ -6,7 +6,7 @@
 
 | 路径 | 编排方式 | 适合场景 |
 |------|---------|---------|
-| **A. tff-cc 编排** | `/tff:discuss → execute → verify → learn` | 大型功能，需要严格 agent 流水线和质量门禁 |
+| **A. tff-cc 编排** | `/tff-cc:discuss → execute → verify → learn` | 大型功能，需要严格 agent 流水线和质量门禁 |
 | **B. 直调 Agent** | 手动按顺序加载各 agent 的 SKILL.md | 中小任务，快速迭代，零配置 |
 
 ---
@@ -22,12 +22,12 @@ tff-cc 是编排器，读取 `tff-config/settings.yaml` 中的工作流定义，
    │
    ▼
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ /tff:discuss│ ──► │/tff:execute │ ──► │ /tff:verify │
+│ /tff-cc:discuss│ ──► │/tff-cc:execute │ ──► │ /tff-cc:verify │
 │  任务分析   │     │  代码开发   │     │  代码审查   │
 └─────────────┘     └─────────────┘     └─────────────┘
                                               │
    ┌─────────────┐     ┌─────────────┐        │
-   │ /tff:learn  │ ◄── │/tff:execute │ ◄──────┘
+   │ /tff-cc:learn  │ ◄── │/tff-cc:execute │ ◄──────┘
    │  元审查     │     │ 构建+测试   │
    └─────────────┘     └─────────────┘
 ```
@@ -43,23 +43,23 @@ claude /plugin marketplace add MonsieurBarti/tff-mono
 claude /plugin install tff-cc@the-forge-flow
 
 # 3. 配置项目
-cp tff-config/settings.yaml .tff/settings.yaml
+cp tff-config/settings.yaml .tff-cc/settings.yaml
 
 # 4. 验证
-/tff:help
+/tff-cc:help
 # 输出：
-#   /tff:discuss  — 任务分析
-#   /tff:execute  — 执行开发
-#   /tff:verify   — 代码审查
-#   /tff:learn    — 元审查与学习
+#   /tff-cc:discuss  — 任务分析
+#   /tff-cc:execute  — 执行开发
+#   /tff-cc:verify   — 代码审查
+#   /tff-cc:learn    — 元审查与学习
 ```
 
-### 阶段 1：`/tff:discuss` — 需求分解
+### 阶段 1：`/tff-cc:discuss` — 需求分解
 
 在 Claude Code 中输入：
 
 ```
-/tff:discuss
+/tff-cc:discuss
 
 需求：为 hisi_zip 驱动新增 lz4 压缩算法硬件卸载支持。
 约束：
@@ -69,7 +69,7 @@ cp tff-config/settings.yaml .tff/settings.yaml
 - 不能破坏现有硬件结构体 ABI
 ```
 
-**tff-cc 做的事情**：启动 `task-analyzer` agent，加载 `.tff/skills/task-analyzer/SKILL.md` 和 `docs/uadk-reference.md`，分解需求为原子任务，存入 SQLite。
+**tff-cc 做的事情**：启动 `task-analyzer` agent，加载 `.tff-cc/skills/task-analyzer/SKILL.md` 和 `docs/uadk-reference.md`，分解需求为原子任务，存入 SQLite。
 
 **输出**：
 
@@ -123,13 +123,13 @@ cp tff-config/settings.yaml .tff/settings.yaml
 📊 总预估: 6 slices | 复杂度: SS/SSS | 预计 4-6 轮交互
 ```
 
-### 阶段 2：`/tff:execute` — 逐 Slice 执行
+### 阶段 2：`/tff-cc:execute` — 逐 Slice 执行
 
 tff-cc 按依赖拓扑顺序调度 agent。每个 slice 完成后自动标记状态，下游 slice 就绪后才能执行。
 
 ```bash
 # Slice #1：添加枚举（无依赖，立即就绪）
-/tff:execute 1
+/tff-cc:execute 1
 ```
 
 tff-cc 启动 `uadk-developer` agent，从 SQLite 读取上下文，执行代码变更：
@@ -149,7 +149,7 @@ enum wd_comp_alg_type {
 
 ```bash
 # Slice #1 完成，Slice #2 自动就绪
-/tff:execute 2
+/tff-cc:execute 2
 ```
 
 ```c
@@ -190,10 +190,10 @@ static int fill_buf_lz4(handle_t h_qp, struct hisi_zip_sqe *sqe,
 
 > **注意**：tff-cc 不自动写入文件 — 它输出 diff，你在编辑器中确认后生效。人对代码有最终控制权。
 
-### 阶段 3：`/tff:verify` — 代码审查
+### 阶段 3：`/tff-cc:verify` — 代码审查
 
 ```bash
-/tff:verify 3
+/tff-cc:verify 3
 ```
 
 tff-cc 启动 `code-reviewer` agent，传入 Slice #1、#2 的 diff：
@@ -223,12 +223,12 @@ tff-cc 启动 `code-reviewer` agent，传入 Slice #1、#2 的 diff：
 
 审查不通过 → 回到 `uadk-developer` 修复 → 重新审查。这是 tff-cc 的内置反馈循环，有阻塞项时无法执行后续 slice。
 
-### 阶段 4：`/tff:execute` — 构建 + 测试
+### 阶段 4：`/tff-cc:execute` — 构建 + 测试
 
 审查通过后继续：
 
 ```bash
-/tff:execute 4   # 构建部署
+/tff-cc:execute 4   # 构建部署
 ```
 
 此时代理**主动询问**服务器信息：
@@ -265,7 +265,7 @@ ssh user@server "cat /sys/class/uacce/hisi_zip-0/available_instances"
 ```
 
 ```bash
-/tff:execute 5   # 测试
+/tff-cc:execute 5   # 测试
 ```
 
 测试 agent 自动运行并解析结果：
@@ -293,7 +293,7 @@ WD_BD_DUMP=2 ./lz4_test 2>&1 | tee bd_full.log
 ### 阶段 5：文档合入
 
 ```bash
-/tff:execute 6   # 提交信息
+/tff-cc:execute 6   # 提交信息
 ```
 
 ```
@@ -306,10 +306,10 @@ LASTLITERALS=12, max_offset=65535, output buffer >= 2x input.
 Signed-off-by: Developer <dev@example.com>
 ```
 
-### 阶段 6：`/tff:learn` — 元审查
+### 阶段 6：`/tff-cc:learn` — 元审查
 
 ```bash
-/tff:learn
+/tff-cc:learn
 ```
 
 `meta-reviewer` 审计全流程并给出改进建议：
@@ -344,7 +344,7 @@ Signed-off-by: Developer <dev@example.com>
 ### 第 1 步：任务分析
 
 ```
-请以任务分析器身份工作。首先阅读 .tff/skills/task-analyzer/SKILL.md 
+请以任务分析器身份工作。首先阅读 .tff-cc/skills/task-analyzer/SKILL.md 
 获取完整规则。同时参考 docs/uadk-reference.md 第1节(架构)、第2节(项目结构)、
 第4节(API)。我需要在 hisi_zip 驱动中新增 lz4 压缩算法的硬件卸载支持。
 lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535, 
@@ -354,7 +354,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 2 步：代码开发
 
 ```
-请以 UADK 开发者身份工作。阅读 .tff/skills/uadk-developer/SKILL.md 
+请以 UADK 开发者身份工作。阅读 .tff-cc/skills/uadk-developer/SKILL.md 
 获取完整规则和 SQE 参考。同时参考 docs/uadk-reference.md 第5节(压缩驱动)、
 第6节(SQE描述符)。
 
@@ -372,7 +372,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 3 步：代码审查
 
 ```
-请以代码审查员身份工作。阅读 .tff/skills/code-reviewer/SKILL.md，
+请以代码审查员身份工作。阅读 .tff-cc/skills/code-reviewer/SKILL.md，
 同时参考 docs/uadk-reference.md 第6节(SQE字段定义)和第9节(内存管理)。
 审查刚刚的变更，逐项验证 SQE 审查清单，给出 🔴/🟡/💭 分级意见。
 ```
@@ -380,7 +380,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 4 步：构建部署
 
 ```
-请以构建部署器身份工作。阅读 .tff/skills/build-deployer/SKILL.md。
+请以构建部署器身份工作。阅读 .tff-cc/skills/build-deployer/SKILL.md。
 代码在 drv/hisi_comp.c 和 include/wd_comp.h。需要：
 - 在 {你的服务器}:{你的路径} 编译
 - 加载驱动 modprobe hisi_zip uacce_mode=1 perf_mode=1
@@ -392,7 +392,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 5 步：测试验证
 
 ```
-请以测试调试器身份工作。阅读 .tff/skills/tester-debugger/SKILL.md，
+请以测试调试器身份工作。阅读 .tff-cc/skills/tester-debugger/SKILL.md，
 同时参考 docs/uadk-reference.md 第15节(调试诊断)和第6节(错误码表)。
 对 lz4 算法运行往返测试，覆盖输入大小 0,1,256,1K,64K,1M,8M。
 如有失败，先启用 WD_BD_DUMP=1 检查 SQE 字段。
@@ -402,14 +402,14 @@ segfault 则用 GDB + core dump 定位。
 ### 第 6 步：文档合入
 
 ```
-请以文档编写者身份工作。阅读 .tff/skills/technical-writer/SKILL.md。
+请以文档编写者身份工作。阅读 .tff-cc/skills/technical-writer/SKILL.md。
 为以上变更生成合规的 commit message（不含 AI 署名）。
 ```
 
 ### 第 7 步：元审查（可选）
 
 ```
-请以元审查器身份工作。阅读 .tff/skills/meta-reviewer/SKILL.md。
+请以元审查器身份工作。阅读 .tff-cc/skills/meta-reviewer/SKILL.md。
 对本次 lz4 开发的 agent 协作质量进行审计。
 ```
 
@@ -424,31 +424,31 @@ segfault 则用 GDB + core dump 定位。
   "slashCommands": [
     {
       "name": "/uadk-analyze",
-      "prompt": "你现在是任务分析器。请严格按照 .tff/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。"
+      "prompt": "你现在是任务分析器。请严格按照 .tff-cc/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。"
     },
     {
       "name": "/uadk-develop",
-      "prompt": "你现在是 UADK 开发者。请严格按照 .tff/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。"
+      "prompt": "你现在是 UADK 开发者。请严格按照 .tff-cc/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。"
     },
     {
       "name": "/uadk-review",
-      "prompt": "你现在是 UADK 代码审查员。请严格按照 .tff/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。"
+      "prompt": "你现在是 UADK 代码审查员。请严格按照 .tff-cc/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。"
     },
     {
       "name": "/uadk-build",
-      "prompt": "你现在是构建部署器。请严格按照 .tff/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。"
+      "prompt": "你现在是构建部署器。请严格按照 .tff-cc/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。"
     },
     {
       "name": "/uadk-test",
-      "prompt": "你现在是测试调试器。请严格按照 .tff/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。"
+      "prompt": "你现在是测试调试器。请严格按照 .tff-cc/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。"
     },
     {
       "name": "/uadk-docs",
-      "prompt": "你现在是技术文档编写者。请严格按照 .tff/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。"
+      "prompt": "你现在是技术文档编写者。请严格按照 .tff-cc/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。"
     },
     {
       "name": "/uadk-meta",
-      "prompt": "你现在是元审查器。请严格按照 .tff/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。"
+      "prompt": "你现在是元审查器。请严格按照 .tff-cc/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。"
     }
   ]
 }
@@ -471,11 +471,11 @@ segfault 则用 GDB + core dump 定位。
 
 | 维度 | 路径 A (tff-cc) | 路径 B (直调) |
 |------|----------------|-------------|
-| **启动方式** | `/tff:discuss → execute → verify → learn` | 手动 Read skill → 切换角色 |
+| **启动方式** | `/tff-cc:discuss → execute → verify → learn` | 手动 Read skill → 切换角色 |
 | **状态管理** | SQLite 自动跟踪 slice 状态和依赖 | 你自己记住进度 |
 | **上下文传递** | tff-cc 自动将上游输出注入下游 agent | 你需要手动复制/引用上一步结果 |
 | **并行执行** | 同 wave 的 slice 自动并行 | 你手动开多个会话 |
 | **质量门禁** | verify 不过自动阻塞后续 execute | 你自行判断是否通过 |
-| **学习改进** | `/tff:learn` 自动审计并建议 skill 更新 | 需要你意识到问题才能改进 |
+| **学习改进** | `/tff-cc:learn` 自动审计并建议 skill 更新 | 需要你意识到问题才能改进 |
 | **适合场景** | 多文件、多功能、团队协作的大型项目 | 单文件修改、快速修复、探索性开发 |
 | **学习曲线** | 需要安装配置 tff-cc | 零配置，直接开始 |
