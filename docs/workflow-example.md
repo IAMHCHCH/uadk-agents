@@ -68,19 +68,102 @@ claude plugin install tff-cc@the-forge-flow
 #   /tff-cc:learn      — 元审查与学习
 ```
 
-> **⚠️ 注意**：不要使用 `npm install -g @the-forge-flow/tff-cc`，该包的 postinstall 脚本存在已知问题会导致安装失败。tff-cc 是 Claude Code 插件，应通过 `claude plugin install` 安装。
+> **⚠️ 注意**：不要使用 `npm install -g @the-forge-flow/tff-cc`。tff-cc 是 Claude Code 插件，应通过 `claude plugin install` 安装。插件安装后 `tff-tools` CLI 可通过 `$PLUGIN_ROOT/bin/tff-tools` 访问（在 Claude Code 启动的 shell 中自动加入 PATH）。
+
+#### Node.js 版本与 native binding 兼容性
+
+tff-cc 插件预编译了 `better-sqlite3` 的 native binding，对应 **Node 22**（ABI 127）。如果你的 Node 版本较新（如 25.x，ABI 141），运行 `tff-tools` 时会报 `NATIVE_BINDING_FAILED` 错误：
+
+```
+The module 'better_sqlite3.darwin-x64.node' was compiled against a different Node.js version
+using NODE_MODULE_VERSION 127. This version of Node.js requires NODE_MODULE_VERSION 141.
+```
+
+**解决方法**：用当前 Node 版本重新编译 native binding（需要 Python 3.8+）：
+
+```bash
+# 1. 确保有 Python 3.8+（node-gyp 需要）
+python3 --version  # 如果 < 3.8，安装: brew install python@3.12
+
+# 2. 在临时目录重新编译 better-sqlite3
+cd /tmp && npm init -y --silent
+PYTHON=$(which python3.9 || which python3.11 || which python3.12) \
+  npm install better-sqlite3@12.8.0
+
+# 3. 替换预编译的 binding
+PLUGIN_ROOT="$HOME/.claude/plugins/cache/the-forge-flow/tff-cc/1.1.3"
+cp /tmp/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+  "$PLUGIN_ROOT/dist/cli/better_sqlite3.$(node -e "console.log(process.platform+'-'+process.arch)").node"
+
+# 4. 验证
+$PLUGIN_ROOT/bin/tff-tools --version
+```
+
+#### 备用：切换 Node 版本
+
+如果你有 nvm/fnm，更简单的方式是切换到 Node 22：
+
+```bash
+nvm install 22 && nvm use 22   # 或: fnm install 22 && fnm use 22
+```
 
 ### 阶段 1：`/tff-cc:new` — 项目初始化
 
-首次在项目中使用 tff-cc 时，必须先初始化：
+首次在项目中使用 tff-cc 时，必须先初始化。
+
+#### 初始化流程
 
 ```
 /tff-cc:new
 ```
 
-tff-cc 会引导你定义项目愿景、需求和第一个里程碑。初始化完成后，项目根目录会生成 `.tff/` 配置目录和 `STATE.md` 状态文件。
+tff-cc 会引导你：
+1. 检测代码库（有源码 → 可选分析架构；无源码 → 跳过）
+2. 确认项目名称和愿景
+3. 执行 `tff-tools project:init` 创建 `.tff/` 目录
 
-> **注意**：如果项目已有 `.tff/` 目录（已初始化过），可跳过此步骤，直接进入 `/tff-cc:discuss`。
+以本项目的实际初始化为例（在 [uadk](https://github.com/Linaro/uadk) C 代码库中开发调度新功能）：
+
+```
+项目名称：uadk_sched
+项目愿景：新增 loop、hungry、instr 三种调度模式功能，大幅提升 UADK 硬件加速调度性能
+```
+
+#### 关键限制：不能在默认分支上初始化
+
+`tff-tools` 有**默认分支守卫**——所有写操作拒绝在 `master`/`main` 分支上执行：
+
+```
+{"ok":false,"error":{"code":"REFUSED_ON_DEFAULT_BRANCH",
+  "message":"Refusing to run \"project:init\" on default branch \"master\"."}}
+```
+
+**解决**：先创建工作分支再初始化：
+
+```bash
+git checkout -b milestone/init-project
+# 然后重新执行 /tff-cc:new
+```
+
+#### 初始化后的项目结构
+
+```bash
+uadk/
+├── .tff/                    # → 实际上是指向 ~/.tff/{projectId}/ 的符号链接
+│   ├── PROJECT.md           # 项目愿景（markdown 权威来源）
+│   ├── settings.yaml        # 模型配置、质量门禁、agent 工作流定义
+│   ├── state.db             # SQLite 状态管理（STATE.md 由此派生）
+│   ├── agents/              # 自定义 agent 身份定义（7 个 .md）
+│   ├── skills/              # 自定义 skill 定义（7 个目录，每个含 SKILL.md）
+│   ├── milestones/          # 里程碑（M01, M02, ...）
+│   ├── worktrees/           # git worktree（gitignored）
+│   └── journal/             # 操作日志
+```
+
+> **注意**：
+> - 如果项目已有 `.tff/` 目录（已初始化过），可跳过此步骤，直接进入 `/tff-cc:discuss`
+> - `.tff/` 是符号链接，实际数据存储在 `~/.tff/{projectId}/`，不会污染 git 仓库
+> - Agent 和 Skill 定义可以从参考项目（如 `uadk-agents/`）复制到 `.tff/` 目录中
 
 ### 阶段 2：`/tff-cc:discuss` — 需求分解
 
@@ -375,6 +458,43 @@ Signed-off-by: Developer <dev@example.com>
 ╚══════════════════════════════════════════════════════╝
 ```
 
+### 实际初始化案例：uadk_sched
+
+以下是本项目（在 [UADK](https://github.com/Linaro/uadk) C 代码库中开发异构调度功能）的完整初始化过程，可作为参考。
+
+**项目配置：**
+
+| 项目属性 | 值 |
+|---------|-----|
+| 代码库路径 | `uadk/`（152 个 C 源文件，autotools 构建） |
+| tff 项目名 | `uadk_sched` |
+| 项目愿景 | 新增 loop、hungry、instr 三种调度模式，大幅提升调度性能 |
+| 核心目标文件 | `wd_sched.c`（2095 行） |
+
+**Agent/Workflow 配置：**
+
+从参考配置项目 `uadk-agents/.tff-cc/` 复制 agent 和 skill 定义到 tff 项目目录：
+
+```bash
+cp uadk-agents/.tff-cc/agents/*.md .tff/agents/
+cp -r uadk-agents/.tff-cc/skills/* .tff/skills/
+```
+
+最终 `.tff/settings.yaml` 包含 7 个自定义 agent 和 7 阶段工作流：
+
+```
+分析(task-analyzer) → 开发(uadk-developer) → 审查(code-reviewer)
+  → 构建(build-deployer) → 测试(tester-debugger)
+    → 文档(technical-writer) → 元审查(meta-reviewer)
+```
+
+**初始化时遇到的典型问题：**
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `REFUSED_ON_DEFAULT_BRANCH` | tff-tools 拒绝在 master 上执行写操作 | `git checkout -b milestone/init-project` |
+| `NATIVE_BINDING_FAILED` | Node 25.x 与预编译 binding (Node 22 ABI) 不匹配 | Python 3.9+ 重新编译 better-sqlite3（见阶段 0） |
+
 ---
 
 ## 路径 B：直调 Agent（手动编排）
@@ -384,7 +504,7 @@ Signed-off-by: Developer <dev@example.com>
 ### 第 1 步：任务分析
 
 ```
-请以任务分析器身份工作。首先阅读 .tff-cc/skills/task-analyzer/SKILL.md 
+请以任务分析器身份工作。首先阅读 .tff/skills/task-analyzer/SKILL.md 
 获取完整规则。同时参考 docs/uadk-reference.md 第1节(架构)、第2节(项目结构)、
 第4节(API)。我需要在 hisi_zip 驱动中新增 lz4 压缩算法的硬件卸载支持。
 lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535, 
@@ -394,7 +514,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 2 步：代码开发
 
 ```
-请以 UADK 开发者身份工作。阅读 .tff-cc/skills/uadk-developer/SKILL.md 
+请以 UADK 开发者身份工作。阅读 .tff/skills/uadk-developer/SKILL.md 
 获取完整规则和 SQE 参考。同时参考 docs/uadk-reference.md 第5节(压缩驱动)、
 第6节(SQE描述符)。
 
@@ -412,7 +532,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 3 步：代码审查
 
 ```
-请以代码审查员身份工作。阅读 .tff-cc/skills/code-reviewer/SKILL.md，
+请以代码审查员身份工作。阅读 .tff/skills/code-reviewer/SKILL.md，
 同时参考 docs/uadk-reference.md 第6节(SQE字段定义)和第9节(内存管理)。
 审查刚刚的变更，逐项验证 SQE 审查清单，给出 🔴/🟡/💭 分级意见。
 ```
@@ -420,7 +540,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 4 步：构建部署
 
 ```
-请以构建部署器身份工作。阅读 .tff-cc/skills/build-deployer/SKILL.md。
+请以构建部署器身份工作。阅读 .tff/skills/build-deployer/SKILL.md。
 代码在 drv/hisi_comp.c 和 include/wd_comp.h。需要：
 - 在 {你的服务器}:{你的路径} 编译
 - 加载驱动 modprobe hisi_zip uacce_mode=1 perf_mode=1
@@ -432,7 +552,7 @@ lz4 算法约束：MINMATCH=4, LASTLITERALS=12, 最大offset=65535,
 ### 第 5 步：测试验证
 
 ```
-请以测试调试器身份工作。阅读 .tff-cc/skills/tester-debugger/SKILL.md，
+请以测试调试器身份工作。阅读 .tff/skills/tester-debugger/SKILL.md，
 同时参考 docs/uadk-reference.md 第15节(调试诊断)和第6节(错误码表)。
 对 lz4 算法运行往返测试，覆盖输入大小 0,1,256,1K,64K,1M,8M。
 如有失败，先启用 WD_BD_DUMP=1 检查 SQE 字段。
@@ -442,14 +562,14 @@ segfault 则用 GDB + core dump 定位。
 ### 第 6 步：文档合入
 
 ```
-请以文档编写者身份工作。阅读 .tff-cc/skills/technical-writer/SKILL.md。
+请以文档编写者身份工作。阅读 .tff/skills/technical-writer/SKILL.md。
 为以上变更生成合规的 commit message（不含 AI 署名）。
 ```
 
 ### 第 7 步：元审查（可选）
 
 ```
-请以元审查器身份工作。阅读 .tff-cc/skills/meta-reviewer/SKILL.md。
+请以元审查器身份工作。阅读 .tff/skills/meta-reviewer/SKILL.md。
 对本次 lz4 开发的 agent 协作质量进行审计。
 ```
 
@@ -465,31 +585,31 @@ mkdir -p .claude/commands
 
 # 创建各 agent 的快捷命令
 cat > .claude/commands/uadk-analyze.md << 'EOF'
-你现在是任务分析器。请严格按照 .tff-cc/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。
+你现在是任务分析器。请严格按照 .tff/skills/task-analyzer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则和记忆，同时参考 docs/uadk-reference.md。
 EOF
 
 cat > .claude/commands/uadk-develop.md << 'EOF'
-你现在是 UADK 开发者。请严格按照 .tff-cc/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。
+你现在是 UADK 开发者。请严格按照 .tff/skills/uadk-developer/SKILL.md 中的定义工作。首先阅读该文件获取完整规则、SQE 参考和代码模式，参考 docs/uadk-reference.md 第5-7节和第9-10节。
 EOF
 
 cat > .claude/commands/uadk-review.md << 'EOF'
-你现在是 UADK 代码审查员。请严格按照 .tff-cc/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。
+你现在是 UADK 代码审查员。请严格按照 .tff/skills/code-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审查清单，参考 docs/uadk-reference.md 第6节和第9节。
 EOF
 
 cat > .claude/commands/uadk-build.md << 'EOF'
-你现在是构建部署器。请严格按照 .tff-cc/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。
+你现在是构建部署器。请严格按照 .tff/skills/build-deployer/SKILL.md 中的定义工作。首先阅读该文件获取服务器规则和构建流程，注意必须向用户确认服务器信息。
 EOF
 
 cat > .claude/commands/uadk-test.md << 'EOF'
-你现在是测试调试器。请严格按照 .tff-cc/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。
+你现在是测试调试器。请严格按照 .tff/skills/tester-debugger/SKILL.md 中的定义工作。首先阅读该文件获取测试矩阵、BD dump 和 GDB 调试规则。
 EOF
 
 cat > .claude/commands/uadk-docs.md << 'EOF'
-你现在是技术文档编写者。请严格按照 .tff-cc/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。
+你现在是技术文档编写者。请严格按照 .tff/skills/technical-writer/SKILL.md 中的定义工作。首先阅读该文件获取提交信息和 PR 描述规则。
 EOF
 
 cat > .claude/commands/uadk-meta.md << 'EOF'
-你现在是元审查器。请严格按照 .tff-cc/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。
+你现在是元审查器。请严格按照 .tff/skills/meta-reviewer/SKILL.md 中的定义工作。首先阅读该文件获取审计维度和检查清单。
 EOF
 ```
 
